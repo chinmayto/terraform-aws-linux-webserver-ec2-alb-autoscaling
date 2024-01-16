@@ -1,3 +1,3 @@
-output "instance_ids" {
-  value = aws_instance.web.*.id
+output "autoscaling_group_id" {
+  value = aws_autoscaling_group.aws-autoscaling-group.id
 }

@@ -32,14 +32,14 @@ module "web" {
 ####################################################
 
 module "alb" {
-  source             = "./modules/alb"
-  aws_region         = var.aws_region
-  aws_azs            = var.aws_azs
-  common_tags        = local.common_tags
-  naming_prefix      = local.naming_prefix
-  vpc_id             = module.vpc.vpc_id
-  public_subnets     = module.vpc.public_subnets
-  security_group_alb = module.vpc.security_group_alb
-  instance_ids       = module.web.instance_ids
+  source               = "./modules/alb"
+  aws_region           = var.aws_region
+  aws_azs              = var.aws_azs
+  common_tags          = local.common_tags
+  naming_prefix        = local.naming_prefix
+  vpc_id               = module.vpc.vpc_id
+  public_subnets       = module.vpc.public_subnets
+  security_group_alb   = module.vpc.security_group_alb
+  autoscaling_group_id = module.web.autoscaling_group_id
 }
 

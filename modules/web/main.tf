@@ -1,54 +1,70 @@
 ####################################################
 # Get latest Amazon Linux 2 AMI
 ####################################################
-data "aws_ami" "amazon-linux-2" {
+data "aws_ami" "amazon-linux-ami" {
   most_recent = true
-  owners      = ["amazon"]
+  owners      = ["self"]
   filter {
     name   = "name"
-    values = ["amzn2-ami-hvm*"]
+    values = ["CT_Auto_Scaling_Webhost"]
   }
 }
 
 ####################################################
-# Create the Linux EC2 Web server
+# Create Launch Template Resource
 ####################################################
-resource "aws_instance" "web" {
-  ami                         = data.aws_ami.amazon-linux-2.id
-  instance_type               = var.instance_type
-  key_name                    = var.instance_key
-  security_groups             = var.security_group_ec2
+resource "aws_launch_template" "aws-launch-template" {
+  image_id               = data.aws_ami.amazon-linux-ami.id
+  instance_type          = var.instance_type
+  key_name               = var.instance_key
+  vpc_security_group_ids = var.security_group_ec2
+  update_default_version = true
+  tag_specifications {
+    resource_type = "instance"
+    tags = merge(var.common_tags, {
+      Name = "${var.naming_prefix}-ec2"
+    })
+  }
+  monitoring {
+    enabled = true
+  }
 
-  count     = length(var.public_subnets)
-  subnet_id = element(var.public_subnets, count.index)
+  tag_specifications {
+    resource_type = "instance"
+    tags = merge(var.common_tags, {
+      Name = "${var.naming_prefix}-asg"
+    })
+  }
+}
 
+####################################################
+# Create auto scaling group
+####################################################
+resource "aws_autoscaling_group" "aws-autoscaling-group" {
+  #  name                = "${var.project_name}-ASG-Group"
+  vpc_zone_identifier = tolist(var.public_subnets)
+  desired_capacity    = 1
+  max_size            = 4
+  min_size            = 1
 
-  user_data = <<-EOF
-  #!/bin/bash
-  yum update -y
-  yum install -y httpd.x86_64
-  systemctl start httpd.service
-  systemctl enable httpd.service
-  instanceId=$(curl http://169.254.169.254/latest/meta-data/instance-id)
-  instanceAZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone)
-  pubHostName=$(curl http://169.254.169.254/latest/meta-data/public-hostname)
-  pubIPv4=$(curl http://169.254.169.254/latest/meta-data/public-ipv4)
-  privHostName=$(curl http://169.254.169.254/latest/meta-data/local-hostname)
-  privIPv4=$(curl http://169.254.169.254/latest/meta-data/local-ipv4)
-  
-  echo "<font face = "Verdana" size = "5">"                               > /var/www/html/index.html
-  echo "<center><h1>AWS Linux VM Deployed with Terraform</h1></center>"   >> /var/www/html/index.html
-  echo "<center> <b>EC2 Instance Metadata</b> </center>"                  >> /var/www/html/index.html
-  echo "<center> <b>Instance ID:</b> $instanceId </center>"                      >> /var/www/html/index.html
-  echo "<center> <b>AWS Availablity Zone:</b> $instanceAZ </center>"             >> /var/www/html/index.html
-  echo "<center> <b>Public Hostname:</b> $pubHostName </center>"                 >> /var/www/html/index.html
-  echo "<center> <b>Public IPv4:</b> $pubIPv4 </center>"                         >> /var/www/html/index.html
-  echo "<center> <b>Private Hostname:</b> $privHostName </center>"               >> /var/www/html/index.html
-  echo "<center> <b>Private IPv4:</b> $privIPv4 </center>"                       >> /var/www/html/index.html
-  echo "</font>"                                                          >> /var/www/html/index.html
-EOF
+  launch_template {
+    id      = aws_launch_template.aws-launch-template.id
+    version = aws_launch_template.aws-launch-template.latest_version
+  }
+}
 
-  tags = merge(var.common_tags, {
-    Name = "${var.naming_prefix}-ec2-${count.index + 1}"
-  })
+####################################################
+# Create target tracking scaling policy for average CPU utilization
+####################################################
+resource "aws_autoscaling_policy" "avg_cpu_scaling_policy" {
+  name                   = "avg_cpu_scaling_policy"
+  policy_type            = "TargetTrackingScaling"
+  autoscaling_group_name = aws_autoscaling_group.aws-autoscaling-group.name
+  target_tracking_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ASGAverageCPUUtilization"
+    }
+    target_value = 20.0
+  }
+  estimated_instance_warmup = 180
 }

@@ -57,11 +57,9 @@ resource "aws_lb_listener" "alb_http_listener" {
 }
 
 ####################################################
-# Target Group Attachment with Instance
+# attach auto scaling group to Application Load Balancer ALB
 ####################################################
-
-resource "aws_alb_target_group_attachment" "tgattachment" {
-  count            = length(var.instance_ids)
-  target_group_arn = aws_lb_target_group.alb_target_group.arn
-  target_id        = element(var.instance_ids, count.index)
+resource "aws_autoscaling_attachment" "asg_attachment_alb" {
+  autoscaling_group_name = var.autoscaling_group_id
+  lb_target_group_arn    = aws_lb_target_group.alb_target_group.arn
 }
